@@ -146,6 +146,7 @@ struct LibraryItem {
     int64_t lastWatched = 0;   // unix timestamp
     std::string videoId;       // last watched video/episode
     bool bookmarked = false;
+    std::string syncRaw;       // Stremio account: last known raw library item JSON (preserves unknown fields)
 };
 
 // ─── App Config ──────────────────────────────

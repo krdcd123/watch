@@ -12,6 +12,9 @@ SOURCES = source/main.cpp \
           source/core/addon_client.cpp \
           source/core/addon_manager.cpp \
           source/core/library.cpp \
+          source/stremio/stremio_account.cpp \
+          source/stremio/stremio_curl.cpp \
+          source/stremio/stremio_sync.cpp \
           source/net/http_client.cpp \
           source/net/image_cache.cpp \
           source/player/player.cpp \

@@ -10,7 +10,7 @@ endif
 # --- Application Metadata for NACP ---
 APP_TITLE   := SwitchStream
 APP_AUTHOR  := GoldenDragon
-APP_VERSION := 2.0.0
+APP_VERSION := 2.1.0
 
 TOPDIR ?= $(CURDIR)
 include $(DEVKITPRO)/libnx/switch_rules
@@ -24,7 +24,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 #---------------------------------------------------------------------------------
 TARGET		:=	switchstream
 BUILD		:=	build
-SOURCES		:=	source source/core source/ui source/net source/player source/torrent
+SOURCES		:=	source source/core source/ui source/net source/player source/torrent source/stremio
 INCLUDES	:=	include include/torrent source/torrent
 ROMFS		:=	romfs
 

@@ -229,6 +229,7 @@ bool App::init() {
     // Load saved data
     m_addonManager.loadConfig(CONFIG_FILE);
     m_library.load(LIB_FILE);
+    m_stremio.init(m_library, DATA_DIR);
 
     {
         const std::string newYastreamUrl = "https://yastream-dev.tamthai.de/eyJjYXRhbG9ncyI6WyJraXNza2guc2VyaWVzLktvcmVhbiIsImtpc3NraC5tb3ZpZS5DaGluZXNlIiwia2lzc2toLm1vdmllLktvcmVhbiIsImtpc3NraC5zZXJpZXMuQ2hpbmVzZSIsImtpc3NraC5tb3ZpZS5VUyIsImtpc3NraC5zZXJpZXMuVVMiLCJraXNza2gubW92aWUuVGhhaSIsImtpc3NraC5zZXJpZXMuVGhhaSIsImtpc3NraC5tb3ZpZS5QaGlsaXBwaW5lIiwia2lzc2toLnNlcmllcy5QaGlsaXBwaW5lIiwia2lzc2toLnNlcmllcy5KYXBhbmVzZSIsImtpc3NraC5tb3ZpZS5Ib25na29uZyIsImtpc3NraC5zZXJpZXMuSG9uZ2tvbmciLCJraXNza2gubW92aWUuSmFwYW5lc2UiLCJraXNza2gubW92aWUuVGFpd2FuZXNlIiwia2lzc2toLnNlcmllcy5UYWl3YW5lc2UiLCJvbmV0b3VjaHR2LnNlcmllcy5Lb3JlYW4iLCJvbmV0b3VjaHR2LnNlcmllcy5Qb3B1bGFyIiwib25ldG91Y2h0di5zZXJpZXMuQ2hpbmVzZSIsIm9uZXRvdWNodHYuc2VyaWVzLlRoYWkiLCJraXNza2guc2VyaWVzLlNlYXJjaCIsImtpc3NraC5tb3ZpZS5TZWFyY2giLCJvbmV0b3VjaHR2LnNlcmllcy5TZWFyY2giLCJpZHJhbWEuc2VyaWVzLmlEcmFtYSIsImlkcmFtYS5zZXJpZXMuU2VhcmNoIl0sImNhdGFsb2ciOlsia2lzc2toIiwib25ldG91Y2h0diJdLCJzdHJlYW0iOlsia2lzc2toIiwib25ldG91Y2h0diIsIm1rdmRyYW1hIiwiaWRyYW1hIiwia2twaGltIiwib3BoaW0iXSwibnNmdyI6dHJ1ZSwiaW5mbyI6dHJ1ZSwicG9zdGVyIjoicnBkYiIsIm1mcFVybCI6IiIsInRiS2V5IjoiIiwibWZwUGFzcyI6IiJ9/manifest.json";
@@ -481,6 +482,12 @@ void App::run() {
             }
             m_needsResume = false;
             m_resumeProgress = 0.0;
+        }
+
+        // Stremio account sync: merge pulled library/history, flush throttled progress pushes
+        if (m_stremio.pump()) {
+            m_homeDisplayDirty = true;
+            m_library.save(LIB_FILE);
         }
 
         // Periodic progress save every 10 seconds while playing
@@ -1669,7 +1676,7 @@ void App::handleInputForPad(u64 kDown, u64 kHeld, u64 kUp) {
                 }
                 if (m_clearHistory) {
                     std::remove(LIB_FILE);
-                    m_library = Library();
+                    m_library.clear();
                 }
                 updateCacheSizes();
                 m_showClearCacheModal = false;
@@ -1688,6 +1695,7 @@ void App::handleInputForPad(u64 kDown, u64 kHeld, u64 kUp) {
             settingIds.push_back(7); // CPU
             settingIds.push_back(8); // Data
         }
+        settingIds.push_back(11); // Stremio Account
         settingIds.push_back(9);  // Clean Cache & Reset
         settingIds.push_back(10); // Back to Home
 
@@ -1752,6 +1760,8 @@ void App::handleInputForPad(u64 kDown, u64 kHeld, u64 kUp) {
                 updateCacheSizes();
                 m_showClearCacheModal = true;
                 m_clearCacheItemIndex = 0;
+            } else if (currentId == 11) {
+                handleStremioSettingAction();
             } else if (currentId == 10) {
                 m_screen = Screen::HOME;
             }
@@ -2471,7 +2481,7 @@ void App::handleTouch(int x, int y) {
                 }
                 if (m_clearHistory) {
                     std::remove(LIB_FILE);
-                    m_library = Library();
+                    m_library.clear();
                 }
                 updateCacheSizes();
                 m_showClearCacheModal = false;
@@ -2506,6 +2516,7 @@ void App::handleTouch(int x, int y) {
             settingIds.push_back(7); // CPU
             settingIds.push_back(8); // Data
         }
+        settingIds.push_back(11); // Stremio Account
         settingIds.push_back(9);  // Clean Cache
         settingIds.push_back(10); // Back to Home
 
@@ -2571,6 +2582,8 @@ void App::handleTouch(int x, int y) {
                     updateCacheSizes();
                     m_showClearCacheModal = true;
                     m_clearCacheItemIndex = 0;
+                } else if (id == 11) {
+                    handleStremioSettingAction();
                 } else if (id == 10) {
                     m_screen = Screen::HOME;
                 }
@@ -5133,6 +5146,13 @@ void App::renderSettings() {
         options.push_back({8, "Show Data Usage", "Toggle cumulative network data transfer in HUD.", m_addonManager.getShowDataUsage() ? "ON" : "OFF", true});
     }
 
+    {
+        std::string stremioDesc = m_stremio.statusText();
+        if (stremioDesc.size() > 110) stremioDesc = stremioDesc.substr(0, 107) + "...";
+        std::string stremioVal = m_stremio.busy() ? "Please wait..."
+                               : (m_stremio.loggedIn() ? "[A] Sign out" : "[A] Sign in");
+        options.push_back({11, "Stremio Account", stremioDesc, stremioVal, false});
+    }
     options.push_back({9, "Clean Storage & Cache", m_cachedCacheSizeStr, "Press [A] to Manage", false});
     options.push_back({10, "Back to Home", "Return to main screen.", "", false});
 
@@ -6893,9 +6913,12 @@ void App::saveCurrentPlaybackProgress() {
             prog = std::clamp(pos / dur, 0.0, 1.0);
         }
         std::string vidId = (!m_currentPlayingEpisodeId.empty()) ? m_currentPlayingEpisodeId : m_detailMeta.id;
+        const bool haveTimes = (dur > 10.0 && pos > 0.0);
         m_library.updateProgress(m_detailMeta.id, m_detailMeta.type,
                                 m_detailMeta.name, m_detailMeta.poster,
-                                vidId, prog);
+                                vidId, prog,
+                                haveTimes ? (int64_t)(pos * 1000.0) : -1,
+                                haveTimes ? (int64_t)(dur * 1000.0) : -1);
         m_library.save(LIB_FILE);
         m_homeDisplayDirty = true;
         printf("[App] Saved watch progress for '%s': %.1f%% (pos=%.1fs, dur=%.1fs)\n",
@@ -7863,12 +7886,30 @@ void App::playStream(const Stream& stream) {
     m_osdShowTime = SDL_GetTicks();
 }
 
-void App::openSwkbd(std::string& output, const std::string& header, const std::string& initialText) {
+void App::handleStremioSettingAction() {
+    if (m_stremio.busy()) return;
+    if (m_stremio.loggedIn()) {
+        m_stremio.logout();
+        return;
+    }
+    std::string email, pass;
+    openSwkbd(email, "Stremio account email");
+    if (email.empty()) return;
+    openSwkbd(pass, "Stremio password", "", true);
+    if (pass.empty()) return;
+    m_stremio.beginLogin(email, pass);
+    pass.assign(pass.size(), '\0');   // don't leave the password lying around
+}
+
+void App::openSwkbd(std::string& output, const std::string& header, const std::string& initialText, bool password) {
 #ifdef __SWITCH__
     SwkbdConfig kbd;
     swkbdCreate(&kbd, 0);
     swkbdConfigMakePresetDefault(&kbd);
     swkbdConfigSetStringLenMax(&kbd, 1024);
+    if (password) {
+        swkbdConfigSetPasswordFlag(&kbd, true);
+    }
     if (!header.empty()) {
         swkbdConfigSetHeaderText(&kbd, header.c_str());
     }
@@ -7955,6 +7996,7 @@ void App::shutdown() {
     }
 
     // 2. Save configurations
+    m_stremio.shutdown();   // persists any unsent progress, stops background sync
     m_library.save(LIB_FILE);
     m_addonManager.saveConfig(CONFIG_FILE);
 
@@ -8114,7 +8156,7 @@ void App::handleDrag(int dx, int dy) {
         m_dragAccumY += dy;
         if (abs(m_dragAccumY) >= 30) {
             int diff = -m_dragAccumY / 30;
-            int totalSettings = 7 + (m_addonManager.getShowResourceMonitor() ? 4 : 0);
+            int totalSettings = 8 + (m_addonManager.getShowResourceMonitor() ? 4 : 0);
             int prev = m_settingsIndex;
             m_settingsIndex = std::clamp(m_settingsIndex + diff, 0, totalSettings - 1);
             m_dragAccumY = 0;

@@ -41,6 +41,7 @@ bool Library::load(const std::string& path) {
             if (v.HasMember("lastWatched")) item.lastWatched = v["lastWatched"].GetInt64();
             if (v.HasMember("videoId")) item.videoId = v["videoId"].GetString();
             if (v.HasMember("bookmarked")) item.bookmarked = v["bookmarked"].GetBool();
+            if (v.HasMember("syncRaw") && v["syncRaw"].IsString()) item.syncRaw = v["syncRaw"].GetString();
             m_items[item.id] = std::move(item);
         }
     }
@@ -66,6 +67,7 @@ bool Library::save(const std::string& path) const {
         writer.Key("lastWatched"); writer.Int64(item.lastWatched);
         writer.Key("videoId");     writer.String(item.videoId.c_str());
         writer.Key("bookmarked");  writer.Bool(item.bookmarked);
+        if (!item.syncRaw.empty()) { writer.Key("syncRaw"); writer.String(item.syncRaw.c_str()); }
         writer.EndObject();
     }
     writer.EndArray();
@@ -80,8 +82,10 @@ bool Library::save(const std::string& path) const {
 
 void Library::updateProgress(const std::string& id, const std::string& type,
                               const std::string& name, const std::string& poster,
-                              const std::string& videoId, double progress) {
+                              const std::string& videoId, double progress,
+                              int64_t positionMs, int64_t durationMs) {
     auto& item = m_items[id];
+    const double prevProgress = item.progress;
     item.id = id;
     item.type = type;
     item.name = name;
@@ -89,6 +93,15 @@ void Library::updateProgress(const std::string& id, const std::string& type,
     item.videoId = videoId;
     item.progress = progress;
     item.lastWatched = static_cast<int64_t>(std::time(nullptr));
+
+    if (m_listener) {
+        LibraryEvent ev;
+        ev.type = LibraryEventType::Progress;
+        ev.prevProgress = prevProgress;
+        ev.positionMs = positionMs;
+        ev.durationMs = durationMs;
+        m_listener(item, ev);
+    }
 }
 
 void Library::toggleBookmark(const std::string& id, const std::string& type,
@@ -101,6 +114,12 @@ void Library::toggleBookmark(const std::string& id, const std::string& type,
     item.bookmarked = !item.bookmarked;
     if (item.lastWatched == 0) {
         item.lastWatched = static_cast<int64_t>(std::time(nullptr));
+    }
+
+    if (m_listener) {
+        LibraryEvent ev;
+        ev.type = LibraryEventType::Bookmark;
+        m_listener(item, ev);
     }
 }
 

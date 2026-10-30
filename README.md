@@ -92,6 +92,19 @@
 
 ---
 
+### 🔐 Stremio Account Sync (new)
+
+Sign in to your real Stremio account from **Settings (`[X]`) → Stremio Account**:
+
+- **Continue Watching & history sync**: titles you watched in the Stremio app/web show up on the Switch (with resume points), and what you watch on the Switch is pushed back to your account.
+- **Library / bookmarks sync**: `[X]` on a title adds/removes it from your Stremio library.
+- **Offline safe**: progress made without a connection is queued on the SD card and uploaded next launch.
+- **Privacy**: only the Stremio auth token is stored (`sdmc:/switch/switchstream/stremio_account.json`), never your password. Sign out from the same Settings row.
+- Accounts created with Facebook/Apple sign-in have no password and can't use email login.
+- "Clean Storage -> Watch History" only clears local data; while signed in, your account history returns on the next sync.
+
+---
+
 ## 🕹️ Controls Reference
 
 ### Navigation & Discovery

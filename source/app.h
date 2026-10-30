@@ -6,6 +6,7 @@
 #include "core/addon_client.h"
 #include "core/addon_manager.h"
 #include "core/library.h"
+#include "stremio/stremio_sync.h"
 #include "net/http_client.h"
 #include "net/image_cache.h"
 #include "player/player.h"
@@ -62,7 +63,8 @@ private:
     void drawNavBar();
 
     void handleInput();
-    void openSwkbd(std::string& output, const std::string& header = "", const std::string& initialText = "");
+    void openSwkbd(std::string& output, const std::string& header = "", const std::string& initialText = "", bool password = false);
+    void handleStremioSettingAction();
 
     void loadHomeCatalogs(bool force = false);
     void cleanCatalogImageCache();
@@ -89,6 +91,7 @@ private:
     AddonClient m_addonClient;
     AddonManager m_addonManager;
     Library m_library;
+    StremioSync m_stremio;   // optional Stremio account sync (login + watch history)
     ImageCache* m_imageCache = nullptr;
     Player m_player;
 
