@@ -48,6 +48,12 @@ static constexpr SDL_Color NAV_BORDER     = {50,  48,  84,  180}; // Border
 static constexpr SDL_Color BRAND          = {123, 91,  245, 255}; // Stremio-style violet (#7b5bf5)
 
 // Poster dimensions
+static constexpr int HOME_ROWS_Y = 76;      // first catalog row on Home (header only, no filter pills)
+static constexpr int DRAWER_W = 300;        // navigation drawer width
+static constexpr int DRAWER_ITEM_Y = 132;   // first drawer entry
+static constexpr int DRAWER_ITEM_H = 48;    // drawer entry pitch
+static constexpr int BLUR_A_W = 320, BLUR_A_H = 180;
+static constexpr int BLUR_B_W = 160, BLUR_B_H = 90;
 static constexpr int POSTER_W = 150;
 static constexpr int POSTER_H = 225;
 static constexpr int POSTER_GAP = 16;
@@ -791,6 +797,14 @@ void App::run() {
 }
 
 void App::handleInputForPad(u64 kDown, u64 kHeld, u64 kUp) {
+    // Navigation drawer: takes over input while open; [-] opens it from any screen except the player
+    if (m_drawerOpen) { handleDrawerInput(kDown); return; }
+    if (m_screen != Screen::PLAYER && (kDown & HidNpadButton_Minus) &&
+        !(m_screen == Screen::HOME && m_showStreamWarningPopup)) {
+        openDrawer();
+        return;
+    }
+
     switch (m_screen) {
     case Screen::HOME: {
         if (m_showStreamWarningPopup) {
@@ -818,6 +832,13 @@ void App::handleInputForPad(u64 kDown, u64 kHeld, u64 kUp) {
                     m_showStreamWarningPopup = false;
                 }
             }
+            break;
+        }
+
+        // Avatar focus (reached with Up from the first row): A opens the drawer
+        if (m_profileFocused) {
+            if (kDown & HidNpadButton_A) openDrawer();
+            if (kDown & (HidNpadButton_Down | HidNpadButton_B)) m_profileFocused = false;
             break;
         }
 
@@ -860,6 +881,8 @@ void App::handleInputForPad(u64 kDown, u64 kHeld, u64 kUp) {
         if (kDown & HidNpadButton_Up) {
             if (m_homeRowIndex > 0) {
                 m_homeRowIndex--;
+            } else {
+                m_profileFocused = true;
             }
         }
         if (kDown & HidNpadButton_Right) {
@@ -1780,6 +1803,16 @@ void App::handleInputForPad(u64 kDown, u64 kHeld, u64 kUp) {
 void App::handleTouch(int x, int y) {
     if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) return;
 
+    // Navigation drawer: tap the profile avatar to open; while open it owns all touches
+    if (m_drawerOpen) { handleDrawerTouch(x, y); return; }
+    if ((m_screen == Screen::HOME || m_screen == Screen::LIBRARY ||
+         m_screen == Screen::ADDONS || m_screen == Screen::SETTINGS) &&
+        x >= 28 && x <= 76 && y >= 10 && y <= 58 &&
+        !(m_screen == Screen::HOME && m_showStreamWarningPopup)) {
+        openDrawer();
+        return;
+    }
+
     switch (m_screen) {
     case Screen::HOME: {
         if (m_showStreamWarningPopup) {
@@ -1811,101 +1844,17 @@ void App::handleTouch(int x, int y) {
             return;
         }
 
-        // ─── Header Navigation Click ───
-        int navX = 220;
-        if (y >= 10 && y <= 58) {
-            if (x >= navX + 4 && x < navX + 88) {
-                // Home tab - clean up and reload
-                refreshHome();
-                return;
-            }
-            if (x >= navX + 88 && x < navX + 202) {
-                // Search tab
-                std::string query;
-                openSwkbd(query, "Search movies & series");
-                if (!query.empty()) {
-                    m_searchQuery = query;
-                    performSearch(m_searchQuery);
-                    m_screen = Screen::SEARCH;
-                }
-                return;
-            }
-            if (x >= navX + 202 && x < navX + 316) {
-                m_screen = Screen::LIBRARY;
-                return;
-            }
-            if (x >= navX + 316 && x < navX + 430) {
-                m_addonTab = 0;
-                m_addonIndex = 0;
-                m_screen = Screen::ADDONS;
-                return;
-            }
-            if (x >= navX + 430 && x < navX + 570) {
-                m_settingsIndex = 0;
-                m_screen = Screen::SETTINGS;
-                return;
-            }
-            if (x >= SCREEN_W - 140 && x <= SCREEN_W - 20) {
-                m_running = false;
-                return;
-            }
-        }
-
-        // ─── Filter Pills Bar Click ───
-        bool hasTmdb = m_addonManager.hasTmdbAddon();
-        if (y >= 64 && y <= 104) {
-            if (hasTmdb) {
-                if (x >= 40 && x <= 118) {
-                    m_homeFilterIndex = 0; // All
-                    m_homeRowIndex = 0; m_homeColIndex = 0;
-                    m_homeDisplayDirty = true;
-                    return;
-                } else if (x >= 122 && x <= 228) {
-                    m_homeFilterIndex = 1; // Movies
-                    m_homeRowIndex = 0; m_homeColIndex = 0;
-                    m_homeDisplayDirty = true;
-                    return;
-                } else if (x >= 232 && x <= 356) {
-                    m_homeFilterIndex = 2; // TV Shows
-                    m_homeRowIndex = 0; m_homeColIndex = 0;
-                    m_homeDisplayDirty = true;
-                    return;
-                } else if (x >= 360 && x <= 470) {
-                    m_homeFilterIndex = 3; // Live TV
-                    m_homeRowIndex = 0; m_homeColIndex = 0;
-                    m_homeDisplayDirty = true;
-                    return;
-                } else if (x >= 474 && x <= 594) {
-                    m_homeFilterIndex = 4; // Add-ons
-                    m_homeRowIndex = 0; m_homeColIndex = 0;
-                    m_homeDisplayDirty = true;
-                    return;
-                }
-            } else {
-                if (x >= 40 && x <= 118) {
-                    m_homeFilterIndex = 0; // All
-                    m_homeRowIndex = 0; m_homeColIndex = 0;
-                    m_homeDisplayDirty = true;
-                    return;
-                } else if (x >= 122 && x <= 230) {
-                    m_homeFilterIndex = 3; // Live TV
-                    m_homeRowIndex = 0; m_homeColIndex = 0;
-                    m_homeDisplayDirty = true;
-                    return;
-                } else if (x >= 234 && x <= 354) {
-                    m_homeFilterIndex = 4; // Add-ons
-                    m_homeRowIndex = 0; m_homeColIndex = 0;
-                    m_homeDisplayDirty = true;
-                    return;
-                }
-            }
+        // ─── Header: exit badge (navigation lives in the profile drawer) ───
+        if (y >= 10 && y <= 58 && x >= SCREEN_W - 140 && x <= SCREEN_W - 20) {
+            m_running = false;
+            return;
         }
 
         // ─── Catalog Posters Grid ───
         const auto& localCatalogs = getHomeDisplayCatalogs();
         if (localCatalogs.empty()) return;
 
-        int startY = 122;
+        int startY = HOME_ROWS_Y;
         int firstRow = m_homeRowIndex > 0 ? m_homeRowIndex - 1 : 0;
 
         auto getRowHeight = [&localCatalogs](int r) -> int {
@@ -2280,37 +2229,6 @@ void App::handleTouch(int x, int y) {
             }
         }
 
-        // Top nav bar click
-        int navX = 220, navY = 14;
-        if (y >= navY && y <= navY + 40) {
-            if (x >= navX + 4 && x < navX + 88) {
-                m_screen = Screen::HOME;
-                refreshHome();
-                return;
-            }
-            if (x >= navX + 88 && x < navX + 202) {
-                openSwkbd(m_searchQuery, "Search movies & series");
-                if (!m_searchQuery.empty()) {
-                    performSearch(m_searchQuery);
-                    m_screen = Screen::SEARCH;
-                }
-                return;
-            }
-            if (x >= navX + 202 && x < navX + 316) {
-                m_screen = Screen::LIBRARY;
-                return;
-            }
-            if (x >= navX + 316 && x < navX + 430) {
-                // Already on Addons
-                return;
-            }
-            if (x >= navX + 430 && x < navX + 570) {
-                updateCacheSizes();
-                m_settingsIndex = 0;
-                m_screen = Screen::SETTINGS;
-                return;
-            }
-        }
         if (x >= SCREEN_W - 130 && x <= SCREEN_W - 40 && y >= 18 && y <= 50) {
             m_running = false;
             return;
@@ -2990,6 +2908,12 @@ void App::render() {
         return;
     }
 
+    updateDrawerAnim();
+    const bool drawerVisible = (m_drawerAnim > 0.001f);
+    // While the drawer is visible, draw the frame into an offscreen texture so it can be blurred.
+    const bool useScene = drawerVisible && ensureBlurTargets();
+    if (useScene) SDL_SetRenderTarget(m_renderer, m_sceneTex);
+
     SDL_SetRenderDrawColor(m_renderer, BG_COLOR.r, BG_COLOR.g, BG_COLOR.b, 255);
     SDL_RenderClear(m_renderer);
 
@@ -3005,6 +2929,12 @@ void App::render() {
 
     drawNavBar();
     renderResourceHUD();
+
+    if (useScene) {
+        SDL_SetRenderTarget(m_renderer, nullptr);
+        SDL_RenderCopy(m_renderer, m_sceneTex, nullptr, nullptr);
+    }
+    if (drawerVisible) renderDrawer(useScene);
     SDL_RenderPresent(m_renderer);
 }
 
@@ -4264,49 +4194,6 @@ void App::renderHome() {
                m_imageCache ? (m_imageCache->memoryUsage() / (1024.0 * 1024.0)) : 0.0);
     }
 
-    bool hasTmdb = m_addonManager.hasTmdbAddon();
-    int filterY = 68;
-    int filterH = 34;
-
-    struct FilterPill {
-        int id;
-        std::string label;
-        int x, w;
-    };
-    std::vector<FilterPill> pills;
-    if (hasTmdb) {
-        pills = {
-            {0, "All", 40, 72},
-            {1, "Movies", 122, 102},
-            {2, "TV Shows", 234, 118},
-            {3, "Live TV", 362, 104},
-            {4, "Add-ons", 476, 114}
-        };
-    } else {
-        pills = {
-            {0, "All", 40, 72},
-            {3, "Live TV", 122, 104},
-            {4, "Add-ons", 236, 114}
-        };
-        if (m_homeFilterIndex != 0 && m_homeFilterIndex != 3 && m_homeFilterIndex != 4) {
-            m_homeFilterIndex = 0;
-        }
-    }
-
-    for (const auto& pill : pills) {
-        bool selected = (pill.id == m_homeFilterIndex);
-        if (selected) {
-            drawFilledRoundRect(pill.x, filterY, pill.w, filterH, 16, BRAND);
-            drawTextCentered(pill.label, pill.x + pill.w / 2, filterY + 7, TEXT_PRIMARY, m_fontNormal);
-        } else {
-            drawFilledRoundRect(pill.x, filterY, pill.w, filterH, 16, {26, 25, 50, 230});
-            drawRoundRect(pill.x, filterY, pill.w, filterH, 16, {52, 50, 88, 180});
-            drawTextCentered(pill.label, pill.x + pill.w / 2, filterY + 7, TEXT_SECONDARY, m_fontNormal);
-        }
-    }
-    int lastPillEnd = pills.back().x + pills.back().w;
-    drawText("[ZL/ZR] Filters", lastPillEnd + 20, filterY + 8, TEXT_SECONDARY, m_fontSmall);
-
     if (m_loadingHome && localCatalogs.empty()) {
         drawSpinner(SCREEN_W/2, SCREEN_H/2 - 40, 24);
         drawTextCentered("Loading catalogs...", SCREEN_W/2, SCREEN_H/2 + 25, TEXT_SECONDARY);
@@ -4319,7 +4206,7 @@ void App::renderHome() {
         return;
     }
 
-    int startY = 122;
+    int startY = HOME_ROWS_Y;
     int firstRow = m_homeRowIndex > 0 ? m_homeRowIndex - 1 : 0;
 
     auto getRowHeight = [&localCatalogs](int r) -> int {
@@ -4373,7 +4260,7 @@ void App::renderHome() {
         const int cardY = curY + 38;
         for (int c = startCol; c < (int)row.items.size() && c < startCol + maxVisible; c++) {
             const int cardX = x + (c - startCol) * (cardW + cardGap);
-            const bool selected = (r == m_homeRowIndex && c == m_homeColIndex);
+            const bool selected = (!m_profileFocused && r == m_homeRowIndex && c == m_homeColIndex);
             const LibraryItem* libItem = m_library.getItem(row.items[c].id);
 
             // Poster (portrait), rounded
@@ -5359,53 +5246,9 @@ void App::renderResourceHUD() {
 }
 
 void App::drawTopNavBar() {
-    // 1. Brand: violet rounded logo mark with a play triangle + wordmark
-    drawFilledRoundRect(32, 13, 38, 38, 11, BRAND);
+    // 1. Profile avatar (left): shows your Stremio initial, press A on it (Home) / tap it to open the menu
     {
-        SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
-        const int cx = 32 + 15, cy = 13 + 19, hh = 9, tw = 14;
-        for (int dy = -hh; dy <= hh; dy++) {
-            int w = tw - (tw * std::abs(dy)) / hh;
-            SDL_RenderDrawLine(m_renderer, cx, cy + dy, cx + w, cy + dy);
-        }
-    }
-    drawText("SwitchStream", 78, 18, TEXT_PRIMARY, m_fontNormal);
-
-    // 2. Top Navigation Pill Bar
-    int navX = 220, navY = 14, navW = 570, navH = 40;
-    drawFilledRoundRect(navX, navY, navW, navH, 20, NAV_CONTAINER);
-    drawRoundRect(navX, navY, navW, navH, 20, NAV_BORDER);
-
-    struct NavTab {
-        std::string label;
-        int width;
-        Screen targetScreen;
-    };
-
-    const std::vector<NavTab> tabs = {
-        {"Home",         84,  Screen::HOME},
-        {"Search [Y]",   114, Screen::SEARCH},
-        {"Library [L]",  114, Screen::LIBRARY},
-        {"Addons [R]",   114, Screen::ADDONS},
-        {"Settings [X]", 124, Screen::SETTINGS}
-    };
-
-    int curX = navX + 4;
-    for (const auto& tab : tabs) {
-        bool active = (m_screen == tab.targetScreen);
-        if (active) {
-            drawFilledRoundRect(curX, navY + 4, tab.width, navH - 8, 16, BRAND);
-            drawTextCentered(tab.label, curX + tab.width / 2, navY + 9, TEXT_PRIMARY, m_fontNormal);
-        } else {
-            drawTextCentered(tab.label, curX + tab.width / 2, navY + 9, TEXT_SECONDARY, m_fontNormal);
-        }
-        curX += tab.width + 4;
-    }
-
-    // Right: Stremio account avatar (initial when signed in) + quick exit badge
-    {
-        const int ax = SCREEN_W - 186, ay = 14, as = 40;
+        const int ax = 32, ay = 14, as = 40;
         if (m_stremio.loggedIn()) {
             drawFilledRoundRect(ax, ay, as, as, as / 2, BRAND);
             std::string em = m_stremio.email();
@@ -5416,10 +5259,350 @@ void App::drawTopNavBar() {
             drawRoundRect(ax, ay, as, as, as / 2, NAV_BORDER);
             drawTextCentered("?", ax + as / 2, ay + 8, TEXT_SECONDARY, m_fontNormal);
         }
+        if (m_screen == Screen::HOME && m_profileFocused) {
+            drawRoundRect(ax - 3, ay - 3, as + 6, as + 6, as / 2 + 3, TEXT_PRIMARY);
+            drawRoundRect(ax - 2, ay - 2, as + 4, as + 4, as / 2 + 2, TEXT_PRIMARY);
+        }
     }
+
+    // 2. Brand: violet rounded logo mark with a play triangle + wordmark
+    drawFilledRoundRect(88, 13, 38, 38, 11, BRAND);
+    {
+        SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
+        const int cx = 88 + 15, cy = 13 + 19, hh = 9, tw = 14;
+        for (int dy = -hh; dy <= hh; dy++) {
+            int w = tw - (tw * std::abs(dy)) / hh;
+            SDL_RenderDrawLine(m_renderer, cx, cy + dy, cx + w, cy + dy);
+        }
+    }
+    drawText("SwitchStream", 134, 18, TEXT_PRIMARY, m_fontNormal);
+
+    // 3. Quick exit badge (right)
     drawFilledRoundRect(SCREEN_W - 130, 18, 90, 32, 16, {30, 28, 56, 200});
     drawRoundRect(SCREEN_W - 130, 18, 90, 32, 16, {58, 55, 96, 180});
     drawTextCentered("[+] Exit", SCREEN_W - 85, 23, TEXT_SECONDARY, m_fontSmall);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  Navigation drawer (Hulu-style): slides in from the left over a
+//  blurred copy of the screen.
+// ═══════════════════════════════════════════════════════════════
+
+// Entry ids: 0 Search, 1 Home, 2 Movies, 3 TV Shows, 4 Live TV, 5 Catalogs, 6 Library, 7 Addons, 8 Settings
+std::vector<std::pair<int, std::string>> App::drawerEntries() {
+    std::vector<std::pair<int, std::string>> e;
+    e.push_back({0, "Search"});
+    e.push_back({1, "Home"});
+    if (m_addonManager.hasTmdbAddon()) {
+        e.push_back({2, "Movies"});
+        e.push_back({3, "TV Shows"});
+    }
+    e.push_back({4, "Live TV"});
+    e.push_back({5, "Catalogs"});
+    e.push_back({6, "Library"});
+    e.push_back({7, "Addons"});
+    e.push_back({8, "Settings"});
+    return e;
+}
+
+bool App::drawerEntryActive(int id) const {
+    switch (m_screen) {
+    case Screen::HOME:
+        if (id == 1) return m_homeFilterIndex == 0;
+        if (id == 2) return m_homeFilterIndex == 1;
+        if (id == 3) return m_homeFilterIndex == 2;
+        if (id == 4) return m_homeFilterIndex == 3;
+        if (id == 5) return m_homeFilterIndex == 4;
+        return false;
+    case Screen::SEARCH:   return id == 0;
+    case Screen::LIBRARY:  return id == 6;
+    case Screen::ADDONS:   return id == 7;
+    case Screen::SETTINGS: return id == 8;
+    default:               return false;
+    }
+}
+
+void App::openDrawer() {
+    if (m_screen == Screen::PLAYER) return;
+    m_drawerOpen = true;
+    m_profileFocused = false;
+    m_drawerLastTick = SDL_GetTicks();
+    auto entries = drawerEntries();
+    m_drawerIndex = 0;
+    for (int i = 0; i < (int)entries.size(); i++) {
+        if (drawerEntryActive(entries[i].first)) { m_drawerIndex = i; break; }
+    }
+}
+
+void App::closeDrawer() {
+    m_drawerOpen = false;
+    m_drawerLastTick = SDL_GetTicks();
+}
+
+void App::activateDrawerItem(int id) {
+    switch (id) {
+    case 0:  // Search
+        openSwkbd(m_searchQuery, "Search movies & series");
+        if (!m_searchQuery.empty()) {
+            performSearch(m_searchQuery);
+            m_screen = Screen::SEARCH;
+        }
+        break;
+    case 1: case 2: case 3: case 4: case 5: {  // Home + catalog filters
+        static const int filterFor[6] = {-1, 0, 1, 2, 3, 4};
+        m_homeFilterIndex = filterFor[id];
+        m_homeRowIndex = 0;
+        m_homeColIndex = 0;
+        m_homeDisplayDirty = true;
+        m_screen = Screen::HOME;
+        break;
+    }
+    case 6:
+        m_screen = Screen::LIBRARY;
+        break;
+    case 7:
+        m_addonTab = 0;
+        m_addonIndex = 0;
+        m_screen = Screen::ADDONS;
+        break;
+    case 8:
+        updateCacheSizes();
+        m_settingsIndex = 0;
+        m_screen = Screen::SETTINGS;
+        break;
+    default: break;
+    }
+}
+
+void App::handleDrawerInput(u64 kDown) {
+    auto entries = drawerEntries();
+    const int n = (int)entries.size();
+    if (n == 0) { closeDrawer(); return; }
+    if (m_drawerIndex >= n) m_drawerIndex = n - 1;
+
+    if (kDown & HidNpadButton_Down) m_drawerIndex = (m_drawerIndex + 1) % n;
+    if (kDown & HidNpadButton_Up)   m_drawerIndex = (m_drawerIndex + n - 1) % n;
+    if (kDown & (HidNpadButton_B | HidNpadButton_Left | HidNpadButton_Minus)) {
+        closeDrawer();
+        return;
+    }
+    if (kDown & HidNpadButton_A) {
+        int id = entries[m_drawerIndex].first;
+        closeDrawer();
+        activateDrawerItem(id);
+    }
+}
+
+void App::handleDrawerTouch(int x, int y) {
+    if (x >= DRAWER_W) { closeDrawer(); return; }        // tap outside the panel
+    if (y < DRAWER_ITEM_Y - 12) {                       // profile header -> account settings
+        closeDrawer();
+        activateDrawerItem(8);
+        return;
+    }
+    auto entries = drawerEntries();
+    int idx = (y - DRAWER_ITEM_Y) / DRAWER_ITEM_H;
+    if (y >= DRAWER_ITEM_Y && idx >= 0 && idx < (int)entries.size()) {
+        m_drawerIndex = idx;
+        int id = entries[idx].first;
+        closeDrawer();
+        activateDrawerItem(id);
+    }
+}
+
+void App::updateDrawerAnim() {
+    uint32_t now = SDL_GetTicks();
+    float dt = (now - m_drawerLastTick) / 1000.0f;
+    if (dt > 0.05f) dt = 0.05f;
+    m_drawerLastTick = now;
+    const float target = m_drawerOpen ? 1.0f : 0.0f;
+    const float step = dt * 7.0f;   // ~140 ms slide
+    if (m_drawerAnim < target) m_drawerAnim = std::min(target, m_drawerAnim + step);
+    else if (m_drawerAnim > target) m_drawerAnim = std::max(target, m_drawerAnim - step);
+}
+
+bool App::ensureBlurTargets() {
+    if (!m_blurSupported) return false;
+    if (m_sceneTex && m_blurA && m_blurB) return true;
+    if (!SDL_RenderTargetSupported(m_renderer)) { m_blurSupported = false; return false; }
+    auto make = [this](int w, int h) -> SDL_Texture* {
+        SDL_Texture* t = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, w, h);
+        if (t) {
+            SDL_SetTextureBlendMode(t, SDL_BLENDMODE_NONE);
+            SDL_SetTextureScaleMode(t, SDL_ScaleModeLinear);
+        }
+        return t;
+    };
+    if (!m_sceneTex) m_sceneTex = make(SCREEN_W, SCREEN_H);
+    if (!m_blurA)    m_blurA = make(BLUR_A_W, BLUR_A_H);
+    if (!m_blurB)    m_blurB = make(BLUR_B_W, BLUR_B_H);
+    if (!m_sceneTex || !m_blurA || !m_blurB) {
+        if (m_sceneTex) { SDL_DestroyTexture(m_sceneTex); m_sceneTex = nullptr; }
+        if (m_blurA)    { SDL_DestroyTexture(m_blurA);    m_blurA = nullptr; }
+        if (m_blurB)    { SDL_DestroyTexture(m_blurB);    m_blurB = nullptr; }
+        m_blurSupported = false;
+        return false;
+    }
+    return true;
+}
+
+// Simple geometric icons (no icon font needed)
+void App::drawDrawerIcon(int id, int cx, int cy, SDL_Color col) {
+    SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(m_renderer, col.r, col.g, col.b, col.a);
+    auto line = [this](int x1, int y1, int x2, int y2) {
+        SDL_RenderDrawLine(m_renderer, x1, y1, x2, y2);
+        SDL_RenderDrawLine(m_renderer, x1 + 1, y1, x2 + 1, y2);
+        SDL_RenderDrawLine(m_renderer, x1, y1 + 1, x2, y2 + 1);
+    };
+    switch (id) {
+    case 0:  // search: lens + handle
+        drawRoundRect(cx - 10, cy - 10, 17, 17, 8, col);
+        drawRoundRect(cx - 9, cy - 9, 15, 15, 7, col);
+        SDL_SetRenderDrawColor(m_renderer, col.r, col.g, col.b, col.a);
+        line(cx + 4, cy + 4, cx + 10, cy + 10);
+        break;
+    case 1:  // home: roof + body
+        line(cx - 11, cy, cx, cy - 10);
+        line(cx, cy - 10, cx + 11, cy);
+        drawRect(cx - 7, cy, 15, 10, col);
+        drawRect(cx - 6, cy + 1, 13, 8, col);
+        break;
+    case 2:  // movies: screen + play triangle
+        drawRoundRect(cx - 11, cy - 9, 22, 18, 3, col);
+        SDL_SetRenderDrawColor(m_renderer, col.r, col.g, col.b, col.a);
+        for (int dy = -5; dy <= 5; dy++) SDL_RenderDrawLine(m_renderer, cx - 3, cy + dy, cx - 3 + 8 - (8 * std::abs(dy)) / 5, cy + dy);
+        break;
+    case 3:  // tv shows: tv + stand
+        drawRoundRect(cx - 11, cy - 9, 22, 15, 3, col);
+        SDL_SetRenderDrawColor(m_renderer, col.r, col.g, col.b, col.a);
+        line(cx - 5, cy + 10, cx + 5, cy + 10);
+        break;
+    case 4:  // live: lightning bolt
+        line(cx + 3, cy - 11, cx - 5, cy + 1);
+        line(cx - 5, cy + 1, cx + 3, cy + 1);
+        line(cx + 3, cy + 1, cx - 3, cy + 11);
+        break;
+    case 5:  // catalogs: list rows
+        drawFilledRoundRect(cx - 11, cy - 9, 22, 4, 2, col);
+        drawFilledRoundRect(cx - 11, cy - 2, 22, 4, 2, col);
+        drawFilledRoundRect(cx - 11, cy + 5, 22, 4, 2, col);
+        break;
+    case 6:  // library: bookmark
+        line(cx - 7, cy - 10, cx - 7, cy + 10);
+        line(cx + 7, cy - 10, cx + 7, cy + 10);
+        line(cx - 7, cy - 10, cx + 7, cy - 10);
+        line(cx - 7, cy + 10, cx, cy + 4);
+        line(cx + 7, cy + 10, cx, cy + 4);
+        break;
+    case 7:  // addons: 2x2 blocks
+        drawFilledRoundRect(cx - 11, cy - 11, 10, 10, 3, col);
+        drawFilledRoundRect(cx + 1,  cy - 11, 10, 10, 3, col);
+        drawFilledRoundRect(cx - 11, cy + 1,  10, 10, 3, col);
+        drawFilledRoundRect(cx + 1,  cy + 1,  10, 10, 3, col);
+        break;
+    case 8:  // settings: gear
+        drawRoundRect(cx - 7, cy - 7, 14, 14, 7, col);
+        drawRoundRect(cx - 6, cy - 6, 12, 12, 6, col);
+        drawFilledRoundRect(cx - 2, cy - 2, 5, 5, 2, col);
+        SDL_SetRenderDrawColor(m_renderer, col.r, col.g, col.b, col.a);
+        line(cx, cy - 11, cx, cy - 8);  line(cx, cy + 8, cx, cy + 11);
+        line(cx - 11, cy, cx - 8, cy);  line(cx + 8, cy, cx + 11, cy);
+        line(cx - 8, cy - 8, cx - 6, cy - 6);  line(cx + 6, cy + 6, cx + 8, cy + 8);
+        line(cx + 8, cy - 8, cx + 6, cy - 6);  line(cx - 6, cy + 6, cx - 8, cy + 8);
+        break;
+    default: break;
+    }
+}
+
+void App::renderDrawer(bool hasScene) {
+    const float t = m_drawerAnim;
+    const float e = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);   // ease-out
+    const int drawerX = (int)((e - 1.0f) * DRAWER_W);
+    const int x0 = std::max(0, drawerX);
+    const int x1 = drawerX + DRAWER_W;
+
+    // Dim everything to the right of the panel
+    drawFilledRect(0, 0, SCREEN_W, SCREEN_H, {0, 0, 0, (Uint8)(120.0f * e)});
+    if (x1 <= x0) return;
+
+    // Blurred backdrop: repeatedly down/up-sample the finished frame with linear filtering
+    if (hasScene && m_sceneTex && m_blurA && m_blurB) {
+        SDL_SetRenderTarget(m_renderer, m_blurA); SDL_RenderCopy(m_renderer, m_sceneTex, nullptr, nullptr);
+        SDL_SetRenderTarget(m_renderer, m_blurB); SDL_RenderCopy(m_renderer, m_blurA, nullptr, nullptr);
+        SDL_SetRenderTarget(m_renderer, m_blurA); SDL_RenderCopy(m_renderer, m_blurB, nullptr, nullptr);
+        SDL_SetRenderTarget(m_renderer, m_blurB); SDL_RenderCopy(m_renderer, m_blurA, nullptr, nullptr);
+        SDL_SetRenderTarget(m_renderer, nullptr);
+
+        const int sx = (x0 * BLUR_B_W) / SCREEN_W;
+        const int sx2 = std::min(BLUR_B_W, (x1 * BLUR_B_W + SCREEN_W - 1) / SCREEN_W);
+        SDL_Rect src = {sx, 0, std::max(1, sx2 - sx), BLUR_B_H};
+        SDL_Rect dst = {x0, 0, x1 - x0, SCREEN_H};
+        SDL_RenderCopy(m_renderer, m_blurB, &src, &dst);
+        drawFilledRect(x0, 0, x1 - x0, SCREEN_H, {10, 9, 28, 150});      // navy tint over the blur
+    } else {
+        drawFilledRect(x0, 0, x1 - x0, SCREEN_H, {10, 9, 28, 244});      // no blur support: near-opaque panel
+    }
+
+    // Soft edge shadow + border
+    for (int i = 0; i < 14; i++)
+        drawFilledRect(x1 + i, 0, 1, SCREEN_H, {0, 0, 0, (Uint8)(90 - i * 6)});
+    drawFilledRect(x1 - 1, 0, 1, SCREEN_H, NAV_BORDER);
+
+    // Profile header
+    {
+        const int ax = drawerX + 28, ay = 34, as = 56;
+        const bool in = m_stremio.loggedIn();
+        if (in) {
+            drawFilledRoundRect(ax, ay, as, as, as / 2, BRAND);
+            std::string em = m_stremio.email();
+            std::string initial = em.empty() ? "S" : std::string(1, (char)toupper((unsigned char)em[0]));
+            drawTextCentered(initial, ax + as / 2, ay + 13, TEXT_PRIMARY, m_fontLarge);
+        } else {
+            drawFilledRoundRect(ax, ay, as, as, as / 2, NAV_CONTAINER);
+            drawRoundRect(ax, ay, as, as, as / 2, NAV_BORDER);
+            drawTextCentered("?", ax + as / 2, ay + 13, TEXT_SECONDARY, m_fontLarge);
+        }
+        std::string name = "Guest";
+        if (in) {
+            std::string em = m_stremio.email();
+            size_t at = em.find('@');
+            name = (at == std::string::npos) ? em : em.substr(0, at);
+            if (name.size() > 16) name = name.substr(0, 14) + "..";
+        }
+        drawText(name, drawerX + 100, ay + 6, TEXT_PRIMARY, m_fontNormal);
+        drawText(in ? "Stremio account" : "Not signed in", drawerX + 100, ay + 32, TEXT_SECONDARY, m_fontSmall);
+    }
+
+    // Entries
+    auto entries = drawerEntries();
+    for (int i = 0; i < (int)entries.size(); i++) {
+        const int id = entries[i].first;
+        const int rowY = DRAWER_ITEM_Y + i * DRAWER_ITEM_H;
+        const bool selected = (i == m_drawerIndex);
+        const bool active = drawerEntryActive(id);
+        SDL_Color col = (selected || active) ? TEXT_PRIMARY : SDL_Color{200, 198, 225, 255};
+        if (selected) {
+            drawFilledRoundRect(drawerX + 14, rowY, DRAWER_W - 28, 42, 12, BRAND);
+        } else if (active) {
+            drawFilledRoundRect(drawerX + 14, rowY + 10, 4, 22, 2, BRAND);
+        }
+        drawDrawerIcon(id, drawerX + 44, rowY + 21, col);
+        drawText(entries[i].second, drawerX + 78, rowY + 9, col, m_fontNormal);
+    }
+
+    // Footer brand
+    drawFilledRoundRect(drawerX + 28, SCREEN_H - 112, 30, 30, 9, BRAND);
+    {
+        SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
+        const int cx = drawerX + 28 + 12, cy = SCREEN_H - 112 + 15, hh = 7, tw = 11;
+        for (int dy = -hh; dy <= hh; dy++)
+            SDL_RenderDrawLine(m_renderer, cx, cy + dy, cx + tw - (tw * std::abs(dy)) / hh, cy + dy);
+    }
+    drawText("SwitchStream", drawerX + 68, SCREEN_H - 109, TEXT_PRIMARY, m_fontNormal);
 }
 
 
@@ -5448,12 +5631,24 @@ void App::drawNavBar() {
     int curX = 40;
     int curY = barY + 9;
 
+    if (m_drawerAnim > 0.01f) {
+        curX = drawBtnPrompt("A", "Select", curX, curY);
+        curX = drawBtnPrompt("B", "Close", curX, curY);
+        drawBtnPrompt("-", "Close", curX, curY);
+        return;
+    }
+
     switch (m_screen) {
     case Screen::HOME:
+        if (m_profileFocused) {
+            curX = drawBtnPrompt("A", "Open Menu", curX, curY);
+            curX = drawBtnPrompt("B", "Back", curX, curY);
+            break;
+        }
         curX = drawBtnPrompt("A", "Select", curX, curY);
-        curX = drawBtnPrompt("B", "Refresh", curX, curY);
+        curX = drawBtnPrompt("-", "Menu", curX, curY);
         curX = drawBtnPrompt("Y", "Search", curX, curY);
-        curX = drawBtnPrompt("L/R", "Tabs", curX, curY);
+        curX = drawBtnPrompt("L/R", "Library/Addons", curX, curY);
         curX = drawBtnPrompt("+", "Exit", curX, curY);
         break;
     case Screen::SEARCH:
@@ -7988,6 +8183,9 @@ void App::shutdown() {
     if (m_fontSmall)  { TTF_CloseFont(m_fontSmall);  m_fontSmall  = nullptr; }
     
     if (m_pillTexture) { SDL_DestroyTexture(m_pillTexture); m_pillTexture = nullptr; }
+    if (m_sceneTex) { SDL_DestroyTexture(m_sceneTex); m_sceneTex = nullptr; }
+    if (m_blurA) { SDL_DestroyTexture(m_blurA); m_blurA = nullptr; }
+    if (m_blurB) { SDL_DestroyTexture(m_blurB); m_blurB = nullptr; }
     if (m_renderer) { SDL_DestroyRenderer(m_renderer); m_renderer = nullptr; }
     if (m_window)   { SDL_DestroyWindow(m_window);     m_window   = nullptr; }
     
@@ -8001,6 +8199,7 @@ void App::shutdown() {
 }
 
 void App::handleDrag(int dx, int dy) {
+    if (m_drawerOpen) return;
     if (dx == 0 && dy == 0) return;
     printf("[Touch] handleDrag: dx=%d, dy=%d, accumX=%d, accumY=%d, screen=%d\n", 
            dx, dy, m_dragAccumX, m_dragAccumY, (int)m_screen);
@@ -8215,6 +8414,7 @@ void App::handleDrag(int dx, int dy) {
 }
 
 void App::handleLongPress(int x, int y) {
+    if (m_drawerOpen) return;
     printf("[Touch] handleLongPress triggered: x=%d, y=%d, screen=%d\n", x, y, (int)m_screen);
     if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) return;
 
@@ -8223,7 +8423,7 @@ void App::handleLongPress(int x, int y) {
         const auto& localCatalogs = getHomeDisplayCatalogs();
         if (localCatalogs.empty()) return;
 
-        int startY = 122;
+        int startY = HOME_ROWS_Y;
         int firstRow = m_homeRowIndex > 0 ? m_homeRowIndex - 1 : 0;
 
         auto getRowHeight = [&localCatalogs](int r) -> int {

@@ -66,6 +66,19 @@ private:
     void openSwkbd(std::string& output, const std::string& header = "", const std::string& initialText = "", bool password = false);
     void handleStremioSettingAction();
 
+    // ─── Hulu-style navigation drawer (opened from the profile avatar) ───
+    void openDrawer();
+    void closeDrawer();
+    void handleDrawerInput(u64 kDown);
+    void handleDrawerTouch(int x, int y);
+    void activateDrawerItem(int id);
+    std::vector<std::pair<int, std::string>> drawerEntries();
+    bool drawerEntryActive(int id) const;
+    void renderDrawer(bool hasScene);
+    void drawDrawerIcon(int id, int cx, int cy, SDL_Color col);
+    bool ensureBlurTargets();
+    void updateDrawerAnim();
+
     void loadHomeCatalogs(bool force = false);
     void cleanCatalogImageCache();
     void refreshHome();
@@ -92,6 +105,17 @@ private:
     AddonManager m_addonManager;
     Library m_library;
     StremioSync m_stremio;   // optional Stremio account sync (login + watch history)
+
+    // Navigation drawer state
+    bool m_drawerOpen = false;          // target state
+    float m_drawerAnim = 0.0f;          // 0 = hidden .. 1 = fully open
+    uint32_t m_drawerLastTick = 0;
+    int m_drawerIndex = 0;              // highlighted entry
+    bool m_profileFocused = false;      // Home: header avatar has gamepad focus
+    SDL_Texture* m_sceneTex = nullptr;  // full-frame render target (for the blur)
+    SDL_Texture* m_blurA = nullptr;     // 1/4 size
+    SDL_Texture* m_blurB = nullptr;     // 1/8 size
+    bool m_blurSupported = true;
     ImageCache* m_imageCache = nullptr;
     Player m_player;
 
