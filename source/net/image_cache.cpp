@@ -46,8 +46,11 @@ SDL_Texture* ImageCache::store(const std::string& url, const void* data, size_t 
     SDL_Surface* downscaled = nullptr;
     // On Switch 720p/1080p, cards are 150x225 and detail poster is 270x405.
     // Downscale oversized images (> 300x450) to save massive amounts of RAM/VRAM.
-    if (surface->w > 300 || surface->h > 450) {
-        int targetW = 300;
+    // Landscape artwork (backdrops for the hero cards) keeps more width so it stays sharp at ~440px.
+    const bool isLandscapeImg = surface->w > surface->h;
+    const int maxImgW = isLandscapeImg ? 480 : 300;
+    if (surface->w > maxImgW || (!isLandscapeImg && surface->h > 450)) {
+        int targetW = maxImgW;
         int targetH = (surface->h * targetW) / surface->w;
         if (targetH < 1) targetH = 1;
         downscaled = SDL_CreateRGBSurface(0, targetW, targetH, 32,

@@ -8,7 +8,7 @@ $(error "Please set DEVKITPRO in your environment. export DEVKITPRO=/opt/devkitp
 endif
 
 # --- Application Metadata for NACP ---
-APP_TITLE   := SwitchStream
+APP_TITLE   := Stremio
 APP_AUTHOR  := GoldenDragon
 APP_VERSION := 2.1.0
 

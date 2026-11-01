@@ -50,11 +50,11 @@ static constexpr SDL_Color BRAND          = {123, 91,  245, 255}; // Stremio-sty
 // Poster dimensions
 static constexpr int HOME_ROWS_Y = 76;      // first catalog row on Home (header only, no filter pills)
 static constexpr int DRAWER_W = 300;        // navigation drawer width
-static constexpr int CW_CARD_W = 288;       // Recently Watched landscape card (16:9)
-static constexpr int CW_CARD_H = 162;
+static constexpr int CW_CARD_W = 440;       // Recently Watched hero card (16:9)
+static constexpr int CW_CARD_H = 248;
 static constexpr int SEARCH_TOP = 88;       // search results list
-static constexpr int SEARCH_ROW_H = 96;
-static constexpr int SEARCH_VISIBLE = 6;
+static constexpr int SEARCH_ROW_H = 116;
+static constexpr int SEARCH_VISIBLE = 5;
 static constexpr int DRAWER_ITEM_Y = 132;   // first drawer entry
 static constexpr int DRAWER_ITEM_H = 48;    // drawer entry pitch
 static constexpr int BLUR_A_W = 320, BLUR_A_H = 180;
@@ -164,11 +164,11 @@ bool App::init() {
 
     // Use windowed mode on Linux for easier debugging, fullscreen on Switch
 #ifdef __SWITCH__
-    m_window = SDL_CreateWindow("SwitchStream",
+    m_window = SDL_CreateWindow("Stremio",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         SCREEN_W, SCREEN_H, SDL_WINDOW_FULLSCREEN | SDL_WINDOW_OPENGL);
 #else
-    m_window = SDL_CreateWindow("SwitchStream (Simulator)",
+    m_window = SDL_CreateWindow("Stremio (Simulator)",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         SCREEN_W, SCREEN_H, SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL);
 #endif
@@ -1868,7 +1868,7 @@ void App::handleTouch(int x, int y) {
             if (r < 0 || r >= (int)localCatalogs.size()) return 292;
             bool isCW = (localCatalogs[r].addonName == "SwitchStream" || localCatalogs[r].catalogName == "Continue Watching");
             bool isLocal = (localCatalogs[r].addonName == "Local" || localCatalogs[r].catalogName == "Local Videos");
-            return isCW ? 256 : (isLocal ? 312 : 292);   // keep in sync with renderHome()
+            return isCW ? 344 : (isLocal ? 312 : 292);   // keep in sync with renderHome()
         };
 
         int curY = startY;
@@ -1882,11 +1882,12 @@ void App::handleTouch(int x, int y) {
             int cardW = isCW ? CW_CARD_W : POSTER_W;   // keep in sync with renderHome()
             int cardH = isCW ? CW_CARD_H : POSTER_H;
             int cardGap = POSTER_GAP;
-            int maxVisibleCols = (SCREEN_W - 80) / (cardW + cardGap);
+            int fullCols = std::max(1, (SCREEN_W - 80 + cardGap) / (cardW + cardGap));
+            int maxVisibleCols = isCW ? fullCols + 1 : fullCols;   // keep in sync with renderHome()
 
             int startCol = 0;
-            if (r == m_homeRowIndex && m_homeColIndex >= maxVisibleCols)
-                startCol = m_homeColIndex - maxVisibleCols + 1;
+            if (r == m_homeRowIndex && m_homeColIndex >= fullCols)
+                startCol = m_homeColIndex - fullCols + 1;
 
             int cardY = curY + 38;   // keep in sync with renderHome()
             for (int c = startCol; c < (int)row.items.size() && c < startCol + maxVisibleCols; c++) {
@@ -4220,7 +4221,7 @@ void App::renderHome() {
         if (r < 0 || r >= (int)localCatalogs.size()) return 292;
         bool isCW = (localCatalogs[r].addonName == "SwitchStream" || localCatalogs[r].catalogName == "Continue Watching");
         bool isLocal = (localCatalogs[r].addonName == "Local" || localCatalogs[r].catalogName == "Local Videos");
-        return isCW ? 256 : (isLocal ? 312 : 292);   // continue-watching rows carry a 2nd caption line
+        return isCW ? 344 : (isLocal ? 312 : 292);   // continue-watching rows carry a 2nd caption line
     };
 
     // Shorten text with ".." until it fits maxW pixels.
@@ -4258,11 +4259,12 @@ void App::renderHome() {
         const int cardH = isCW ? CW_CARD_H : POSTER_H;
         const int cardGap = POSTER_GAP;
         const int cardR = isCW ? 12 : 10;
-        const int maxVisible = (SCREEN_W - 80) / (cardW + cardGap);
+        const int fullVisible = std::max(1, (SCREEN_W - 80 + cardGap) / (cardW + cardGap));
+        const int maxVisible = isCW ? fullVisible + 1 : fullVisible;   // hero row peeks the next card
 
         int startCol = 0;
-        if (r == m_homeRowIndex && m_homeColIndex >= maxVisible)
-            startCol = m_homeColIndex - maxVisible + 1;
+        if (r == m_homeRowIndex && m_homeColIndex >= fullVisible)
+            startCol = m_homeColIndex - fullVisible + 1;
 
         const int cardY = curY + 38;
         for (int c = startCol; c < (int)row.items.size() && c < startCol + maxVisible; c++) {
@@ -4274,15 +4276,15 @@ void App::renderHome() {
             if (isCW) {
                 drawFilledRoundRect(cardX, cardY, cardW, cardH, cardR, CARD_COLOR);
                 drawLandscapeArt(row.items[c], cardX, cardY, cardW, cardH);
-                for (int g = 0; g < 48; g += 4)   // soft shade at the bottom so the progress bar reads
-                    drawFilledRect(cardX, cardY + cardH - 48 + g, cardW, 4, {0, 0, 0, (Uint8)(g * 3)});
+                for (int g = 0; g < 72; g += 4)   // soft shade at the bottom so the progress bar reads
+                    drawFilledRect(cardX, cardY + cardH - 72 + g, cardW, 4, {0, 0, 0, (Uint8)(g * 2)});
                 maskRoundedCorners(cardX, cardY, cardW, cardH, cardR, BG_COLOR);
 
                 if (libItem && libItem->progress > 0.01 && libItem->progress < 0.99) {
-                    const int barX = cardX + 14, barW = cardW - 28, barY = cardY + cardH - 16;
+                    const int barX = cardX + 18, barW = cardW - 36, barY = cardY + cardH - 22;
                     const int fillW = std::clamp((int)(barW * libItem->progress), 4, barW);
-                    drawFilledRoundRect(barX, barY, barW, 4, 2, {255, 255, 255, 90});
-                    drawFilledRoundRect(barX, barY, fillW, 4, 2, TEXT_PRIMARY);
+                    drawFilledRoundRect(barX, barY, barW, 5, 2, {255, 255, 255, 90});
+                    drawFilledRoundRect(barX, barY, fillW, 5, 2, TEXT_PRIMARY);
                 }
                 if (selected) {
                     drawRoundRect(cardX - 3, cardY - 3, cardW + 6, cardH + 6, cardR + 3, BRAND);
@@ -4463,12 +4465,12 @@ void App::renderSearch() {
         }
 
         // Thumbnail (only the visible rows are ever requested)
-        const int tx = 46, ty = y + 5, tw = 52, th = 78;
-        drawPoster(item, tx, ty, tw, th);
+        const int tx = 46, ty = y + 3, tw = 68, th = 102;
+        drawThumb(item, tx, ty, tw, th);
         maskRoundedCorners(tx, ty, tw, th, 8, rowBg);
 
-        const int textX = tx + tw + 20;
-        drawText(fitName(item.name, SCREEN_W - 30 - textX - 20), textX, y + 12,
+        const int textX = tx + tw + 22;
+        drawText(fitName(item.name, SCREEN_W - 30 - textX - 20), textX, y + 24,
                  sel ? TEXT_PRIMARY : SDL_Color{225, 223, 242, 255}, m_fontNormal);
 
         std::string typeLabel = item.type;
@@ -4476,7 +4478,7 @@ void App::renderSearch() {
         std::string subText = typeLabel;
         if (!item.releaseInfo.empty()) subText += "  •  " + item.releaseInfo;
         if (!item.addonName.empty())   subText += "  •  " + item.addonName;
-        drawText(subText, textX, y + 46, TEXT_SECONDARY, m_fontSmall);
+        drawText(subText, textX, y + 58, TEXT_SECONDARY, m_fontSmall);
 
         y += SEARCH_ROW_H;
     }
@@ -5314,6 +5316,27 @@ void App::renderResourceHUD() {
     drawTextCentered(hudStr, hudX + hudW / 2, hudY + 3, {230, 230, 235, 255}, m_fontSmall);
 }
 
+// Brand mark: violet->blue diamond with a white play triangle (matches the app icon).
+void App::drawBrandMark(int cx, int cy, int r) {
+    SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
+    for (int dy = -r; dy <= r; dy++) {
+        const float t = (float)(dy + r) / (float)(2 * r);
+        const Uint8 cr = (Uint8)(127 + (24 - 127) * t);
+        const Uint8 cg = (Uint8)(92 + (96 - 92) * t);
+        const Uint8 cb = (Uint8)(250 + (226 - 250) * t);
+        int half = r - std::abs(dy);
+        if (std::abs(dy) >= r - 1) half = std::max(0, half - 2);   // soften the top/bottom tips
+        SDL_SetRenderDrawColor(m_renderer, cr, cg, cb, 255);
+        SDL_RenderDrawLine(m_renderer, cx - half, cy + dy, cx + half, cy + dy);
+    }
+    SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
+    const int hh = std::max(3, r * 4 / 9), tw = std::max(4, r * 2 / 3);
+    for (int dy = -hh; dy <= hh; dy++) {
+        const int w = tw - (tw * std::abs(dy)) / hh;
+        SDL_RenderDrawLine(m_renderer, cx - tw / 3, cy + dy, cx - tw / 3 + w, cy + dy);
+    }
+}
+
 void App::drawTopNavBar() {
     // 1. Profile avatar (left): shows your Stremio initial, press A on it (Home) / tap it to open the menu
     {
@@ -5334,18 +5357,9 @@ void App::drawTopNavBar() {
         }
     }
 
-    // 2. Brand: violet rounded logo mark with a play triangle + wordmark
-    drawFilledRoundRect(88, 13, 38, 38, 11, BRAND);
-    {
-        SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
-        const int cx = 88 + 15, cy = 13 + 19, hh = 9, tw = 14;
-        for (int dy = -hh; dy <= hh; dy++) {
-            int w = tw - (tw * std::abs(dy)) / hh;
-            SDL_RenderDrawLine(m_renderer, cx, cy + dy, cx + w, cy + dy);
-        }
-    }
-    drawText("SwitchStream", 134, 18, TEXT_PRIMARY, m_fontNormal);
+    // 2. Brand mark + wordmark
+    drawBrandMark(108, 33, 22);
+    drawText("Stremio", 138, 18, TEXT_PRIMARY, m_fontNormal);
 
     // 3. Quick exit badge (right)
     drawFilledRoundRect(SCREEN_W - 130, 18, 90, 32, 16, {30, 28, 56, 200});
@@ -5663,15 +5677,8 @@ void App::renderDrawer(bool hasScene) {
     }
 
     // Footer brand
-    drawFilledRoundRect(drawerX + 28, SCREEN_H - 112, 30, 30, 9, BRAND);
-    {
-        SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
-        SDL_SetRenderDrawColor(m_renderer, 255, 255, 255, 255);
-        const int cx = drawerX + 28 + 12, cy = SCREEN_H - 112 + 15, hh = 7, tw = 11;
-        for (int dy = -hh; dy <= hh; dy++)
-            SDL_RenderDrawLine(m_renderer, cx, cy + dy, cx + tw - (tw * std::abs(dy)) / hh, cy + dy);
-    }
-    drawText("SwitchStream", drawerX + 68, SCREEN_H - 109, TEXT_PRIMARY, m_fontNormal);
+    drawBrandMark(drawerX + 44, SCREEN_H - 98, 20);
+    drawText("Stremio", drawerX + 74, SCREEN_H - 109, TEXT_PRIMARY, m_fontNormal);
 }
 
 
@@ -6147,6 +6154,36 @@ void App::drawCoverTexture(SDL_Texture* tex, int x, int y, int w, int h, float a
     SDL_Rect src = {(tw - srcW) / 2, (int)((th - srcH) * anchorY), srcW, srcH};
     SDL_Rect dst = {x, y, w, h};
     SDL_RenderCopy(m_renderer, tex, &src, &dst);
+}
+
+// Search-list thumbnail: poster when available, otherwise a clean placeholder
+// (the generic poster fallback card is designed for big posters and overflows at thumbnail size).
+void App::drawThumb(const MetaItem& item, int x, int y, int w, int h) {
+    std::string titleKey = normalizeTitleKey(item.name, item.type);
+    bool cached = m_imageCache &&
+                  ((!titleKey.empty() && m_imageCache->has(titleKey)) ||
+                   (!item.poster.empty() && m_imageCache->has(item.poster)));
+    bool failed = false;
+    if (!cached) {
+        if (item.poster.empty()) {
+            failed = true;
+        } else {
+            std::lock_guard<std::mutex> lock(m_downloadedMutex);
+            failed = (m_failedPosters.find(item.poster) != m_failedPosters.end()) ||
+                     (!titleKey.empty() && m_failedPosters.find(titleKey) != m_failedPosters.end());
+        }
+    }
+    if (failed) {
+        drawFilledRoundRect(x, y, w, h, 8, {36, 34, 66, 255});
+        drawRoundRect(x, y, w, h, 8, {58, 55, 96, 255});
+        SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(m_renderer, 150, 146, 190, 255);
+        const int cx = x + w / 2 - 3, cy = y + h / 2, hh = std::max(5, w / 6), tw = std::max(7, w / 4);
+        for (int dy = -hh; dy <= hh; dy++)
+            SDL_RenderDrawLine(m_renderer, cx, cy + dy, cx + tw - (tw * std::abs(dy)) / hh, cy + dy);
+        return;
+    }
+    drawPoster(item, x, y, w, h);
 }
 
 // Landscape preview: real backdrop when we have one, otherwise a centre-crop of the poster.
@@ -8591,7 +8628,7 @@ void App::handleLongPress(int x, int y) {
             if (r < 0 || r >= (int)localCatalogs.size()) return 292;
             bool isCW = (localCatalogs[r].addonName == "SwitchStream" || localCatalogs[r].catalogName == "Continue Watching");
             bool isLocal = (localCatalogs[r].addonName == "Local" || localCatalogs[r].catalogName == "Local Videos");
-            return isCW ? 256 : (isLocal ? 312 : 292);   // keep in sync with renderHome()
+            return isCW ? 344 : (isLocal ? 312 : 292);   // keep in sync with renderHome()
         };
 
         int curY = startY;
@@ -8605,11 +8642,12 @@ void App::handleLongPress(int x, int y) {
             int cardW = isCW ? CW_CARD_W : POSTER_W;   // keep in sync with renderHome()
             int cardH = isCW ? CW_CARD_H : POSTER_H;
             int cardGap = POSTER_GAP;
-            int maxVisibleCols = (SCREEN_W - 80) / (cardW + cardGap);
+            int fullCols = std::max(1, (SCREEN_W - 80 + cardGap) / (cardW + cardGap));
+            int maxVisibleCols = isCW ? fullCols + 1 : fullCols;   // keep in sync with renderHome()
 
             int startCol = 0;
-            if (r == m_homeRowIndex && m_homeColIndex >= maxVisibleCols)
-                startCol = m_homeColIndex - maxVisibleCols + 1;
+            if (r == m_homeRowIndex && m_homeColIndex >= fullCols)
+                startCol = m_homeColIndex - fullCols + 1;
 
             int cardY = curY + 38;   // keep in sync with renderHome()
             for (int c = startCol; c < (int)row.items.size() && c < startCol + maxVisibleCols; c++) {

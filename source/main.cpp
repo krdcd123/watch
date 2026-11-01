@@ -28,7 +28,7 @@ static void showAppletModeWarning() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) < 0) return;
     if (TTF_Init() < 0) { SDL_Quit(); return; }
 
-    SDL_Window* window = SDL_CreateWindow("SwitchStream - Applet Mode Warning",
+    SDL_Window* window = SDL_CreateWindow("Stremio - Applet Mode Warning",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         1280, 720, SDL_WINDOW_FULLSCREEN | SDL_WINDOW_OPENGL);
     if (!window) { TTF_Quit(); SDL_Quit(); return; }
@@ -92,10 +92,10 @@ static void showAppletModeWarning() {
         };
 
         renderText("! TITLE OVERRIDE REQUIRED", 100 + 55, 50 + 36, {255, 255, 255, 255}, fontSmall);
-        renderText("SwitchStream Cannot Run in Applet Mode (Album)", 100 + 40, 50 + 78, {255, 255, 255, 255}, fontTitle);
+        renderText("Stremio Cannot Run in Applet Mode (Album)", 100 + 40, 50 + 78, {255, 255, 255, 255}, fontTitle);
 
         renderText("Current Mode: Applet Mode (RAM restricted to ~400MB)", 100 + 40, 50 + 130, {255, 170, 70, 255}, fontBody);
-        renderText("SwitchStream needs Full Memory (Application Mode / ~3.5GB RAM) for media decoding & streaming.", 100 + 40, 50 + 160, {180, 195, 215, 255}, fontSmall);
+        renderText("Stremio needs Full Memory (Application Mode / ~3.5GB RAM) for media decoding & streaming.", 100 + 40, 50 + 160, {180, 195, 215, 255}, fontSmall);
         renderText("Running inside Album causes memory exhaustion and Atmosph\xc3\xa8re crash (0x95D / 2349-0004).", 100 + 40, 50 + 185, {180, 195, 215, 255}, fontSmall);
 
         SDL_Rect guideBox = { 100 + 40, 50 + 225, 1000, 280 };
@@ -109,7 +109,7 @@ static void showAppletModeWarning() {
         renderText("2. Hold down the [R] bumper button on your controller.", 100 + 65, 50 + 325, {255, 255, 255, 255}, fontBody);
         renderText("3. While holding [R], launch ANY installed game, cartridge, or free game demo.", 100 + 65, 50 + 365, {255, 255, 255, 255}, fontBody);
         renderText("4. Keep holding [R] until the Homebrew Menu opens.", 100 + 65, 50 + 405, {255, 255, 255, 255}, fontBody);
-        renderText("5. Launch SwitchStream from there to enjoy full memory and full CPU power!", 100 + 65, 50 + 445, {100, 235, 100, 255}, fontBody);
+        renderText("5. Launch Stremio from there to enjoy full memory and full CPU power!", 100 + 65, 50 + 445, {100, 235, 100, 255}, fontBody);
 
         SDL_Rect btnRect = { 1280 / 2 - 160, 50 + 535, 320, 48 };
         SDL_SetRenderDrawColor(renderer, 35, 45, 65, 255);

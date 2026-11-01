@@ -62,6 +62,8 @@ private:
     void drawSpinner(int cx, int cy, int radius);
     void drawPoster(const MetaItem& item, int x, int y, int w, int h);
     void drawLandscapeArt(const MetaItem& item, int x, int y, int w, int h);
+    void drawThumb(const MetaItem& item, int x, int y, int w, int h);
+    void drawBrandMark(int cx, int cy, int r);
     void drawCoverTexture(SDL_Texture* tex, int x, int y, int w, int h, float anchorY);
     void pumpCwArt();
     void drawNavBar();
