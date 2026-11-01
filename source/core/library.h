@@ -29,6 +29,12 @@ public:
     // Register a listener (called on the thread that edits the library).
     void setListener(LibraryListener l) { m_listener = std::move(l); }
 
+    // Remember landscape artwork for an item (no listener call).
+    void setBackground(const std::string& id, const std::string& url) {
+        auto it = m_items.find(id);
+        if (it != m_items.end()) it->second.background = url;
+    }
+
     // Remove all items (keeps the listener, unlike assigning a fresh Library).
     void clear() { m_items.clear(); }
 

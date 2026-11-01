@@ -147,6 +147,7 @@ struct LibraryItem {
     std::string videoId;       // last watched video/episode
     bool bookmarked = false;
     std::string syncRaw;       // Stremio account: last known raw library item JSON (preserves unknown fields)
+    std::string background;    // landscape artwork URL (Hulu-style Continue Watching cards)
 };
 
 // ─── App Config ──────────────────────────────

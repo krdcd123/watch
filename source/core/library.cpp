@@ -42,6 +42,7 @@ bool Library::load(const std::string& path) {
             if (v.HasMember("videoId")) item.videoId = v["videoId"].GetString();
             if (v.HasMember("bookmarked")) item.bookmarked = v["bookmarked"].GetBool();
             if (v.HasMember("syncRaw") && v["syncRaw"].IsString()) item.syncRaw = v["syncRaw"].GetString();
+            if (v.HasMember("background") && v["background"].IsString()) item.background = v["background"].GetString();
             m_items[item.id] = std::move(item);
         }
     }
@@ -68,6 +69,7 @@ bool Library::save(const std::string& path) const {
         writer.Key("videoId");     writer.String(item.videoId.c_str());
         writer.Key("bookmarked");  writer.Bool(item.bookmarked);
         if (!item.syncRaw.empty()) { writer.Key("syncRaw"); writer.String(item.syncRaw.c_str()); }
+        if (!item.background.empty()) { writer.Key("background"); writer.String(item.background.c_str()); }
         writer.EndObject();
     }
     writer.EndArray();

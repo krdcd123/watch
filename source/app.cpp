@@ -50,6 +50,11 @@ static constexpr SDL_Color BRAND          = {123, 91,  245, 255}; // Stremio-sty
 // Poster dimensions
 static constexpr int HOME_ROWS_Y = 76;      // first catalog row on Home (header only, no filter pills)
 static constexpr int DRAWER_W = 300;        // navigation drawer width
+static constexpr int CW_CARD_W = 288;       // Recently Watched landscape card (16:9)
+static constexpr int CW_CARD_H = 162;
+static constexpr int SEARCH_TOP = 88;       // search results list
+static constexpr int SEARCH_ROW_H = 96;
+static constexpr int SEARCH_VISIBLE = 6;
 static constexpr int DRAWER_ITEM_Y = 132;   // first drawer entry
 static constexpr int DRAWER_ITEM_H = 48;    // drawer entry pitch
 static constexpr int BLUR_A_W = 320, BLUR_A_H = 180;
@@ -496,6 +501,8 @@ void App::run() {
             m_homeDisplayDirty = true;
             m_library.save(LIB_FILE);
         }
+
+        pumpCwArt();   // fetch landscape artwork for Recently Watched
 
         // Periodic progress save every 10 seconds while playing
         static uint32_t lastProgressSaveTime = 0;
@@ -1861,7 +1868,7 @@ void App::handleTouch(int x, int y) {
             if (r < 0 || r >= (int)localCatalogs.size()) return 292;
             bool isCW = (localCatalogs[r].addonName == "SwitchStream" || localCatalogs[r].catalogName == "Continue Watching");
             bool isLocal = (localCatalogs[r].addonName == "Local" || localCatalogs[r].catalogName == "Local Videos");
-            return (isCW || isLocal) ? 312 : 292;   // keep in sync with renderHome()
+            return isCW ? 256 : (isLocal ? 312 : 292);   // keep in sync with renderHome()
         };
 
         int curY = startY;
@@ -1871,9 +1878,9 @@ void App::handleTouch(int x, int y) {
             int thisRowH = getRowHeight(r);
             bool isCW = (row.addonName == "SwitchStream" || row.catalogName == "Continue Watching");
             bool isLocal = (row.addonName == "Local" || row.catalogName == "Local Videos");
-            (void)isCW; (void)isLocal;
-            int cardW = POSTER_W;   // keep in sync with renderHome()
-            int cardH = POSTER_H;
+            (void)isLocal;
+            int cardW = isCW ? CW_CARD_W : POSTER_W;   // keep in sync with renderHome()
+            int cardH = isCW ? CW_CARD_H : POSTER_H;
             int cardGap = POSTER_GAP;
             int maxVisibleCols = (SCREEN_W - 80) / (cardW + cardGap);
 
@@ -1971,13 +1978,13 @@ void App::handleTouch(int x, int y) {
         }
         if (localResults.empty()) return;
 
-        int maxVisible = (SCREEN_H - 100) / 50;
+        const int maxVisible = SEARCH_VISIBLE;
         int startIdx = 0;
         if (m_searchIndex >= maxVisible) startIdx = m_searchIndex - maxVisible + 1;
 
-        int itemY = 90;
+        int itemY = SEARCH_TOP;
         for (int i = startIdx; i < (int)localResults.size() && i < startIdx + maxVisible; i++) {
-            if (x >= 30 && x <= SCREEN_W - 30 && y >= itemY - 2 && y <= itemY + 44) {
+            if (x >= 30 && x <= SCREEN_W - 30 && y >= itemY && y <= itemY + SEARCH_ROW_H - 8) {
                 m_searchIndex = i;
                 m_detailMeta = localResults[i];
 
@@ -1999,7 +2006,7 @@ void App::handleTouch(int x, int y) {
                 m_screen = Screen::DETAIL;
                 return;
             }
-            itemY += 50;
+            itemY += SEARCH_ROW_H;
         }
         break;
     }
@@ -4213,7 +4220,7 @@ void App::renderHome() {
         if (r < 0 || r >= (int)localCatalogs.size()) return 292;
         bool isCW = (localCatalogs[r].addonName == "SwitchStream" || localCatalogs[r].catalogName == "Continue Watching");
         bool isLocal = (localCatalogs[r].addonName == "Local" || localCatalogs[r].catalogName == "Local Videos");
-        return (isCW || isLocal) ? 312 : 292;   // continue-watching rows carry a 2nd caption line
+        return isCW ? 256 : (isLocal ? 312 : 292);   // continue-watching rows carry a 2nd caption line
     };
 
     // Shorten text with ".." until it fits maxW pixels.
@@ -4247,10 +4254,10 @@ void App::renderHome() {
         }
 
         const int x = 40;
-        const int cardW = POSTER_W;
-        const int cardH = POSTER_H;
+        const int cardW = isCW ? CW_CARD_W : POSTER_W;
+        const int cardH = isCW ? CW_CARD_H : POSTER_H;
         const int cardGap = POSTER_GAP;
-        const int cardR = 10;
+        const int cardR = isCW ? 12 : 10;
         const int maxVisible = (SCREEN_W - 80) / (cardW + cardGap);
 
         int startCol = 0;
@@ -4262,6 +4269,43 @@ void App::renderHome() {
             const int cardX = x + (c - startCol) * (cardW + cardGap);
             const bool selected = (!m_profileFocused && r == m_homeRowIndex && c == m_homeColIndex);
             const LibraryItem* libItem = m_library.getItem(row.items[c].id);
+
+            // ── Recently Watched: Hulu-style landscape preview ──
+            if (isCW) {
+                drawFilledRoundRect(cardX, cardY, cardW, cardH, cardR, CARD_COLOR);
+                drawLandscapeArt(row.items[c], cardX, cardY, cardW, cardH);
+                for (int g = 0; g < 48; g += 4)   // soft shade at the bottom so the progress bar reads
+                    drawFilledRect(cardX, cardY + cardH - 48 + g, cardW, 4, {0, 0, 0, (Uint8)(g * 3)});
+                maskRoundedCorners(cardX, cardY, cardW, cardH, cardR, BG_COLOR);
+
+                if (libItem && libItem->progress > 0.01 && libItem->progress < 0.99) {
+                    const int barX = cardX + 14, barW = cardW - 28, barY = cardY + cardH - 16;
+                    const int fillW = std::clamp((int)(barW * libItem->progress), 4, barW);
+                    drawFilledRoundRect(barX, barY, barW, 4, 2, {255, 255, 255, 90});
+                    drawFilledRoundRect(barX, barY, fillW, 4, 2, TEXT_PRIMARY);
+                }
+                if (selected) {
+                    drawRoundRect(cardX - 3, cardY - 3, cardW + 6, cardH + 6, cardR + 3, BRAND);
+                    drawRoundRect(cardX - 2, cardY - 2, cardW + 4, cardH + 4, cardR + 2, BRAND);
+                }
+
+                // Caption: small "RESUME ..." label + episode tag and title
+                const bool isSeriesItem = (row.items[c].type != "movie");
+                std::string epTag;
+                if (isSeriesItem && libItem && !libItem->videoId.empty()) {
+                    const std::string& vid = libItem->videoId;
+                    size_t c1 = vid.find(':');
+                    size_t c2 = (c1 != std::string::npos) ? vid.find(':', c1 + 1) : std::string::npos;
+                    if (c1 != std::string::npos && c2 != std::string::npos)
+                        epTag = "S" + vid.substr(c1 + 1, c2 - c1 - 1) + " E" + vid.substr(c2 + 1);
+                }
+                drawText(isSeriesItem ? "RESUME EPISODE" : "RESUME MOVIE", cardX + 2, cardY + cardH + 8,
+                         TEXT_SECONDARY, m_fontSmall);
+                std::string line2 = epTag.empty() ? row.items[c].name : (epTag + " - " + row.items[c].name);
+                drawText(fitText(line2, m_fontNormal, cardW), cardX + 2, cardY + cardH + 28,
+                         selected ? TEXT_PRIMARY : SDL_Color{225, 223, 242, 255}, m_fontNormal);
+                continue;
+            }
 
             // Poster (portrait), rounded
             drawFilledRoundRect(cardX, cardY, cardW, cardH, cardR, CARD_COLOR);
@@ -4389,27 +4433,52 @@ void App::renderSearch() {
         return;
     }
 
-    int y = 90;
-    int maxVisible = (SCREEN_H - 100) / 50;
+    auto fitName = [this](std::string name, int maxW) -> std::string {
+        int tw = 0, th = 0;
+        TTF_SizeUTF8(m_fontNormal, name.c_str(), &tw, &th);
+        while (tw > maxW && name.size() > 3) {
+            name.pop_back();
+            std::string test = name + "..";
+            TTF_SizeUTF8(m_fontNormal, test.c_str(), &tw, &th);
+            if (tw <= maxW) return test;
+        }
+        return name;
+    };
+
+    const int maxVisible = SEARCH_VISIBLE;
     int startIdx = 0;
     if (m_searchIndex >= maxVisible) startIdx = m_searchIndex - maxVisible + 1;
 
+    int y = SEARCH_TOP;
     for (int i = startIdx; i < (int)localResults.size() && i < startIdx + maxVisible; i++) {
-        bool sel = (i == m_searchIndex);
-        if (sel) drawFilledRect(30, y - 2, SCREEN_W - 60, 46, CARD_HL);
-
+        const bool sel = (i == m_searchIndex);
         auto& item = localResults[i];
-        
-        // Disabled mini catalog image for faster search loading
-        // drawPoster(item, 50, y, 28, 42);
+        const int rowW = SCREEN_W - 60, rowH = SEARCH_ROW_H - 8;
+        const SDL_Color rowBg = sel ? CARD_HL : CARD_COLOR;
 
-        // Shift text to start at x = 50 (removed poster spacing)
-        drawText(item.name, 50, y + 2, sel ? ACCENT : TEXT_PRIMARY, m_fontNormal);
-        std::string subText = item.type + "  " + item.releaseInfo;
-        if (!item.addonName.empty()) subText += "  [" + item.addonName + "]";
-        drawText(subText, 50, y + 24, TEXT_SECONDARY, m_fontSmall);
-        
-        y += 50;
+        drawFilledRoundRect(30, y, rowW, rowH, 12, rowBg);
+        if (sel) {
+            drawRoundRect(30, y, rowW, rowH, 12, BRAND);
+            drawRoundRect(31, y + 1, rowW - 2, rowH - 2, 11, BRAND);
+        }
+
+        // Thumbnail (only the visible rows are ever requested)
+        const int tx = 46, ty = y + 5, tw = 52, th = 78;
+        drawPoster(item, tx, ty, tw, th);
+        maskRoundedCorners(tx, ty, tw, th, 8, rowBg);
+
+        const int textX = tx + tw + 20;
+        drawText(fitName(item.name, SCREEN_W - 30 - textX - 20), textX, y + 12,
+                 sel ? TEXT_PRIMARY : SDL_Color{225, 223, 242, 255}, m_fontNormal);
+
+        std::string typeLabel = item.type;
+        if (!typeLabel.empty()) typeLabel[0] = (char)toupper((unsigned char)typeLabel[0]);
+        std::string subText = typeLabel;
+        if (!item.releaseInfo.empty()) subText += "  •  " + item.releaseInfo;
+        if (!item.addonName.empty())   subText += "  •  " + item.addonName;
+        drawText(subText, textX, y + 46, TEXT_SECONDARY, m_fontSmall);
+
+        y += SEARCH_ROW_H;
     }
 }
 
@@ -6068,6 +6137,92 @@ void App::drawSpinner(int cx, int cy, int radius) {
     }
 }
 
+// Draw `tex` so it fully covers the w*h box (centre-crop horizontally, anchor vertically).
+void App::drawCoverTexture(SDL_Texture* tex, int x, int y, int w, int h, float anchorY) {
+    int tw = 0, th = 0;
+    if (!tex || SDL_QueryTexture(tex, nullptr, nullptr, &tw, &th) != 0 || tw <= 0 || th <= 0) return;
+    const float scale = std::max((float)w / tw, (float)h / th);
+    const int srcW = std::min(tw, std::max(1, (int)(w / scale)));
+    const int srcH = std::min(th, std::max(1, (int)(h / scale)));
+    SDL_Rect src = {(tw - srcW) / 2, (int)((th - srcH) * anchorY), srcW, srcH};
+    SDL_Rect dst = {x, y, w, h};
+    SDL_RenderCopy(m_renderer, tex, &src, &dst);
+}
+
+// Landscape preview: real backdrop when we have one, otherwise a centre-crop of the poster.
+void App::drawLandscapeArt(const MetaItem& item, int x, int y, int w, int h) {
+    if (!item.background.empty()) {
+        SDL_Texture* tex = m_imageCache ? m_imageCache->get(item.background) : nullptr;
+        if (tex) { drawCoverTexture(tex, x, y, w, h, 0.5f); return; }
+        bool failed = false;
+        {
+            std::lock_guard<std::mutex> lock(m_downloadedMutex);
+            failed = (m_failedPosters.find(item.background) != m_failedPosters.end());
+        }
+        if (!failed) {
+            // Not cached yet: drawPoster queues the download and shows its loading card.
+            MetaItem art;
+            art.type = item.type;
+            art.poster = item.background;   // empty name => no title-key aliasing with the poster texture
+            drawPoster(art, x, y, w, h);
+            return;
+        }
+    }
+    // Fallback: crop the portrait poster (keeps the upper-middle where faces/titles usually are).
+    SDL_Texture* tex = nullptr;
+    if (m_imageCache) {
+        std::string titleKey = normalizeTitleKey(item.name, item.type);
+        if (!titleKey.empty()) tex = m_imageCache->get(titleKey);
+        if (!tex && !item.poster.empty()) tex = m_imageCache->get(item.poster);
+    }
+    if (tex) { drawCoverTexture(tex, x, y, w, h, 0.28f); return; }
+    drawPoster(item, x, y, w, h);   // queues the poster download + placeholder
+}
+
+// Look up landscape artwork (once per title, then remembered in library.json).
+void App::pumpCwArt() {
+    std::vector<std::pair<std::string, std::string>> done;
+    {
+        std::lock_guard<std::mutex> lk(m_artMutex);
+        done.swap(m_artResults);
+    }
+    if (!done.empty()) {
+        for (auto& d : done) m_library.setBackground(d.first, d.second);
+        m_library.save(LIB_FILE);
+        m_homeDisplayDirty = true;
+    }
+
+    static uint32_t lastCheck = 0;
+    const uint32_t now = SDL_GetTicks();
+    if (m_artBusy.load() || m_artStop.load() || m_screen != Screen::HOME || now - lastCheck < 4000) return;
+    lastCheck = now;
+
+    struct Job { std::string type, id; };
+    std::vector<Job> jobs;
+    for (const auto& it : m_library.getContinueWatching(15)) {
+        if (!it.background.empty() || m_artTried.count(it.id)) continue;
+        if (it.type != "movie" && it.type != "series") continue;
+        jobs.push_back({it.type, it.id});
+        m_artTried.insert(it.id);
+        if (jobs.size() >= 8) break;
+    }
+    if (jobs.empty()) return;
+
+    if (m_artThread.joinable()) m_artThread.join();
+    m_artBusy = true;
+    m_artThread = std::thread([this, jobs]() {
+        for (const auto& j : jobs) {
+            if (m_artStop.load()) break;
+            MetaResponse resp;
+            if (m_addonManager.getMeta(j.type, j.id, resp) && !resp.meta.background.empty()) {
+                std::lock_guard<std::mutex> lk(m_artMutex);
+                m_artResults.push_back({j.id, resp.meta.background});
+            }
+        }
+        m_artBusy = false;
+    });
+}
+
 void App::drawPoster(const MetaItem& item, int x, int y, int w, int h) {
     auto drawFallbackCard = [&]() {
         // Base dark card
@@ -7044,6 +7199,7 @@ const std::vector<CatalogRow>& App::getHomeDisplayCatalogs() {
             meta.type = item.type;
             meta.name = item.name;
             meta.poster = item.poster;
+            meta.background = item.background;
             cwRow.items.push_back(std::move(meta));
         }
         hasCw = !cwRow.items.empty();
@@ -7081,6 +7237,7 @@ void App::saveCurrentPlaybackProgress() {
                                 vidId, prog,
                                 haveTimes ? (int64_t)(pos * 1000.0) : -1,
                                 haveTimes ? (int64_t)(dur * 1000.0) : -1);
+        if (!m_detailMeta.background.empty()) m_library.setBackground(m_detailMeta.id, m_detailMeta.background);
         m_library.save(LIB_FILE);
         m_homeDisplayDirty = true;
         printf("[App] Saved watch progress for '%s': %.1f%% (pos=%.1fs, dur=%.1fs)\n",
@@ -8156,6 +8313,10 @@ void App::shutdown() {
     if (m_subSearchThread.joinable()) {
         m_subSearchThread.join();
     }
+    m_artStop = true;
+    if (m_artThread.joinable()) {
+        m_artThread.join();
+    }
 
     // 2. Save configurations
     m_stremio.shutdown();   // persists any unsent progress, stops background sync
@@ -8430,7 +8591,7 @@ void App::handleLongPress(int x, int y) {
             if (r < 0 || r >= (int)localCatalogs.size()) return 292;
             bool isCW = (localCatalogs[r].addonName == "SwitchStream" || localCatalogs[r].catalogName == "Continue Watching");
             bool isLocal = (localCatalogs[r].addonName == "Local" || localCatalogs[r].catalogName == "Local Videos");
-            return (isCW || isLocal) ? 312 : 292;   // keep in sync with renderHome()
+            return isCW ? 256 : (isLocal ? 312 : 292);   // keep in sync with renderHome()
         };
 
         int curY = startY;
@@ -8440,9 +8601,9 @@ void App::handleLongPress(int x, int y) {
             int thisRowH = getRowHeight(r);
             bool isCW = (row.addonName == "SwitchStream" || row.catalogName == "Continue Watching");
             bool isLocal = (row.addonName == "Local" || row.catalogName == "Local Videos");
-            (void)isCW; (void)isLocal;
-            int cardW = POSTER_W;   // keep in sync with renderHome()
-            int cardH = POSTER_H;
+            (void)isLocal;
+            int cardW = isCW ? CW_CARD_W : POSTER_W;   // keep in sync with renderHome()
+            int cardH = isCW ? CW_CARD_H : POSTER_H;
             int cardGap = POSTER_GAP;
             int maxVisibleCols = (SCREEN_W - 80) / (cardW + cardGap);
 

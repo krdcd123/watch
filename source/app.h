@@ -19,6 +19,7 @@
 #include <set>
 #include <thread>
 #include <atomic>
+#include <unordered_set>
 #include <stdexcept>
 #include <exception>
 #include <condition_variable>
@@ -60,6 +61,9 @@ private:
     void maskRoundedCorners(int x, int y, int w, int h, int r, SDL_Color bgColor);
     void drawSpinner(int cx, int cy, int radius);
     void drawPoster(const MetaItem& item, int x, int y, int w, int h);
+    void drawLandscapeArt(const MetaItem& item, int x, int y, int w, int h);
+    void drawCoverTexture(SDL_Texture* tex, int x, int y, int w, int h, float anchorY);
+    void pumpCwArt();
     void drawNavBar();
 
     void handleInput();
@@ -105,6 +109,14 @@ private:
     AddonManager m_addonManager;
     Library m_library;
     StremioSync m_stremio;   // optional Stremio account sync (login + watch history)
+
+    // Landscape artwork lookups for the Recently Watched row
+    std::thread m_artThread;
+    std::atomic<bool> m_artBusy{false};
+    std::atomic<bool> m_artStop{false};
+    std::mutex m_artMutex;
+    std::vector<std::pair<std::string, std::string>> m_artResults;   // (library id, background url)
+    std::unordered_set<std::string> m_artTried;
 
     // Navigation drawer state
     bool m_drawerOpen = false;          // target state
